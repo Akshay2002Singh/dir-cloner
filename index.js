@@ -61,6 +61,12 @@ const argv = yargs
       type: 'string',
       demandOption: true,
     },
+    content: {
+      description: 'Data JSON file path',
+      alias: 'c',
+      type: 'string',
+      default: false,
+    },
     overwrite: {
       description: 'Overwrite existing files with content from JSON',
       alias: 'o',
@@ -92,14 +98,14 @@ const cloneDirectoryToJson = (dirPath) => {
   const clone = (currentPath) => {
     let stat;
     try {
-      stat = fs.lstatSync(currentPath);
+      stat = fs.statSync(currentPath);
     } catch (err) {
       handleError(`reading ${currentPath}`, err);
       return null;
     }
     if (stat.isDirectory()) {
       const dirName = path.basename(currentPath);
-      if (dirName === 'node_modules') {
+      if (dirName === 'node_modules' || dirName.startsWith('.')) {
         return null;
       }
       return {
@@ -109,13 +115,6 @@ const cloneDirectoryToJson = (dirPath) => {
         children: fs.readdirSync(currentPath)
           .map((child) => clone(path.join(currentPath, child)))
           .filter((child) => child !== null),
-      };
-    } else if (stat.isSymbolicLink()) {
-      return {
-        name: path.basename(currentPath),
-        type: 'symlink',
-        target: fs.readlinkSync(currentPath),
-        skip: false,
       };
     } else if (stat.isFile()) {
       if (isAudioVideoFile(currentPath)) {
@@ -137,11 +136,13 @@ const cloneDirectoryToJson = (dirPath) => {
 const copyFileContentsToJson = (jsonNode, sourceDir, contentMap, verbose = false) => {
   if (jsonNode.type === 'file' && !jsonNode.skip) {
     const srcPath = path.join(sourceDir, jsonNode.name);
+    // Compute relative path instead of using absolute path
+    const relativePath = path.relative(path.dirname(sourceDir), srcPath);
 
     if (jsonNode.copyContent) {
       try {
         const content = fs.readFileSync(srcPath);
-        contentMap[srcPath] = content.toString('base64');
+        contentMap[relativePath] = content.toString('base64');
         if (verbose) console.log(`Copied content from ${srcPath} to content map.`);
       } catch (err) {
         handleError(`copying content from ${srcPath}`, err);
@@ -188,7 +189,7 @@ const rebuildDirectoryFromJson = async (json, destPath, contentMap, overwrite = 
       try {
         if (fs.existsSync(fullPath)) {
           if (overwrite) {
-            const content = contentMap[path.join(currentPath, node.name)];
+            const content = contentMap[path.relative(destPath, path.join(currentPath, node.name))];
             if (content) {
               fs.writeFileSync(fullPath, Buffer.from(content, 'base64'));
               if (verbose) console.log(`File overwritten with content at ${fullPath}`);
@@ -207,7 +208,7 @@ const rebuildDirectoryFromJson = async (json, destPath, contentMap, overwrite = 
           }
         } else {
           fs.ensureFileSync(fullPath);
-          const content = contentMap[path.join(currentPath, node.name)];
+          const content = contentMap[path.relative(destPath, path.join(currentPath, node.name))];
           if (content) {
             fs.writeFileSync(fullPath, Buffer.from(content, 'base64'));
             if (verbose) console.log(`File created with content at ${fullPath}`);
@@ -232,7 +233,11 @@ const rebuildDirectoryFromJson = async (json, destPath, contentMap, overwrite = 
 const main = async () => {
   if (argv._.includes('clone')) {
     const sourcePath = path.resolve(argv.source);
-    const outputPath = path.resolve(argv.output);
+    let outputPath = path.resolve(argv.output);
+    if (!outputPath.endsWith('.json')) {
+      // If it's not a `.json` file, append `directoryStructure.json` to the path
+      outputPath = path.join(outputPath, 'directoryStructure.json');
+    }
     try {
       const directoryJson = cloneDirectoryToJson(sourcePath);
       fs.writeJsonSync(outputPath, directoryJson, { spaces: 2 });
@@ -243,12 +248,15 @@ const main = async () => {
   } else if (argv._.includes('copy-content')) {
     const inputPath = path.resolve(argv.input);
     const sourcePath = path.resolve(argv.source);
+    // Remove the last directory (get the parent directory)
+    const updatedSourcePath = path.dirname(sourcePath);
     const outputPath = path.resolve(argv.output);
     const verbose = argv.verbose;
+    const contentMap = {};
     try {
       const directoryJson = fs.readJsonSync(inputPath);
-      copyFileContentsToJson(directoryJson, sourcePath, verbose);
-      fs.writeJsonSync(outputPath, directoryJson, { spaces: 2 });
+      copyFileContentsToJson(directoryJson, updatedSourcePath, contentMap, verbose);
+      fs.writeJsonSync(outputPath, contentMap, { spaces: 2 });
       console.log(`File contents have been copied and saved to ${outputPath}`);
     } catch (err) {
       handleError('copying content to JSON', err);
@@ -257,10 +265,14 @@ const main = async () => {
     const inputPath = path.resolve(argv.input);
     const destPath = path.resolve(argv.destination);
     const overwrite = argv.overwrite;
+    console.log(path.resolve(argv.content))
+    const contentPath = path.resolve(argv.content);
+    let content = fs.readJsonSync(contentPath) || {};
+    console.log(content)
     const verbose = argv.verbose;
     try {
       const directoryJson = fs.readJsonSync(inputPath);
-      await rebuildDirectoryFromJson(directoryJson, destPath, overwrite, verbose);
+      await rebuildDirectoryFromJson(directoryJson, destPath, content, overwrite, verbose);
       console.log(`Directory has been rebuilt at ${destPath}`);
     } catch (err) {
       handleError('rebuilding directory from JSON', err);
