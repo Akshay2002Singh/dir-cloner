@@ -125,7 +125,6 @@ const cloneDirectoryToJson = (dirPath) => {
         type: 'file',
         skip: false,
         copyContent: false,
-        content: null,
       };
     }
   };
@@ -250,7 +249,11 @@ const main = async () => {
     const sourcePath = path.resolve(argv.source);
     // Remove the last directory (get the parent directory)
     const updatedSourcePath = path.dirname(sourcePath);
-    const outputPath = path.resolve(argv.output);
+    let outputPath = path.resolve(argv.output);
+    if (!outputPath.endsWith('.json')) {
+      // If it's not a `.json` file, append `content.json` to the path
+      outputPath = path.join(outputPath, 'content.json');
+    }
     const verbose = argv.verbose;
     const contentMap = {};
     try {
