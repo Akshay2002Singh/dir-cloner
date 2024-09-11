@@ -2,6 +2,21 @@
   "name": "dir-cloner",
   "version": "1.0.0",
   "description": "Help user to clone directory",
+  
+  "keywords": [
+  "directory cloning",
+  "cloning",
+  "dorectory",
+  "directory structure",
+  "JSON",
+  "rebuild directory",
+  "Node.js",
+  "CLI tool",
+  "command-line",
+  "customizable",
+  "directory replication"
+],
+
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
